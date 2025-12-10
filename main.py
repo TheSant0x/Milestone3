@@ -6,8 +6,8 @@ def main():
     load_dotenv()
     
     # checking for API Key
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("\n[!] Error: OPENAI_API_KEY is missing.")
+    if not os.environ.get("HF_TOKEN"):
+        print("\n[!] Error: HF_TOKEN is missing.")
         print("Please open '.env' and add your API key to run this test.")
         return
 

@@ -1,7 +1,5 @@
 neo4j
 python-dotenv
-openai
-langchain
-langchain-community
-langchain-openai
+langchain-huggingface
+huggingface_hub
 pydantic
