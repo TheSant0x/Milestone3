@@ -1,47 +1,98 @@
 import os
+import sys
+import argparse
 from dotenv import load_dotenv
 from src.processor import Preprocessor
+from src.retriever import GraphRetriever
+from src.embeddings import EmbeddingManager
+
+def setup_embeddings():
+    print("Initializing Embedding Manager...")
+    em = EmbeddingManager()
+    print("Creating Vector Index...")
+    em.create_vector_index()
+    print("Populating Embeddings (this may take a while)...")
+    em.populate_embeddings()
+    em.close()
+    print("Setup Complete.")
 
 def main():
     load_dotenv()
     
-    # checking for API Key
+    # CLI Argument to run setup
+    parser = argparse.ArgumentParser(description="Graph RAG Travel Assistant")
+    parser.add_argument("--setup", action="store_true", help="Initialize Vector Embeddings in Neo4j")
+    args = parser.parse_args()
+    
+    if args.setup:
+        setup_embeddings()
+        return
+
+    # Check keys
     if not os.environ.get("HF_TOKEN"):
-        print("\n[!] Error: HF_TOKEN is missing.")
-        print("Please open '.env' and add your API key to run this test.")
+        print("[!] Error: HF_TOKEN is missing in .env")
+        return
+    if not os.environ.get("NEO4J_PASSWORD"):
+        print("[!] Error: NEO4J_PASSWORD is missing in .env")
         return
 
     try:
+        print("Initializing Components...")
         processor = Preprocessor()
-        print("\n=== Graph-RAG Travel Assistant: Preprocessing Test ===")
+        retriever = GraphRetriever()
+        embedder = EmbeddingManager()
+        
+        print("\n=== Graph-RAG Travel Assistant (M3) ===")
         print("Type 'exit' to quit.\n")
         
         while True:
-            user_input = input("User: ")
+            user_input = input("\nUser: ")
             if user_input.lower() in ['exit', 'quit']:
                 break
             
             if not user_input.strip():
                 continue
 
-            print("...> Analyzing...")
-            try:
-                intent, entities = processor.process(user_input)
-                
-                print("-" * 40)
-                print(f"Detected Intent:  [{intent.category.upper()}]")
-                print(f"Reasoning:        {intent.reasoning}")
-                print(f"Extracted Entities:")
-                e_dict = entities.dict()
-                for key, val in e_dict.items():
-                    if val: # Only print non-empty
-                        print(f"  - {key.replace('_', ' ').title()}: {val}")
-                print("-" * 40 + "\n")
-            except Exception as e:
-                print(f"Error processing query: {e}")
+            print("...> Analyzing Request...")
+            intent, entities = processor.process(user_input)
+            
+            print(f"    [Intent]: {intent.category}")
+            print(f"    [Entities]: {', '.join([f'{k}={v}' for k,v in entities.dict().items() if v])}")
+            
+            print("...> Retrieving from Knowledge Graph...")
+            
+            # 1. Baseline Retrieval
+            baseline_results = retriever.retrieve_baseline(intent, entities)
+            
+            # 2. Embedding Retrieval (Vector Search)
+            embedding_results = []
+            if intent.category in ["search", "recommendation"]:
+                embedding_results = embedder.search_similar_hotels(user_input)
+
+            # Display Results
+            print("\n--- Baseline Results (Cypher) ---")
+            if baseline_results:
+                for idx, res in enumerate(baseline_results[:5]): # Show top 5
+                    print(f"{idx+1}. {res}")
+            else:
+                print("No direct matches found via Cypher.")
+
+            print("\n--- Semantic Search Results (Embeddings) ---")
+            if embedding_results:
+                for idx, res in enumerate(embedding_results[:3]):
+                    print(f"{idx+1}. {res.get('hotel')} (Score: {res.get('score'):.4f})")
+            else:
+                print("No semantic matches found.")
+            
+            print("\n" + "="*50)
+
+        retriever.close()
+        embedder.close()
 
     except Exception as e:
-        print(f"Failed to initialize: {e}")
+        print(f"Application Error: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()

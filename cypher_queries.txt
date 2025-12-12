@@ -1,0 +1,117 @@
+// ==========================================
+// Hotel Recommender System - Cypher Query Set
+// Includes Intent Mapping + Query Purpose
+// ==========================================
+
+// ---------------------------------------------------------
+// Query 1 — Intent: Search
+// Purpose: Retrieve all hotels in a given city.
+// User Examples: "Show me hotels in Cairo", "Hotels in Paris"
+// ---------------------------------------------------------
+MATCH (h:Hotel)-[:LOCATED_IN]->(c:City {name:$city})
+RETURN h.name AS hotel, h.star_rating, h.average_reviews_score
+
+
+// ---------------------------------------------------------
+// Query 2 — Intent: Search
+// Purpose: Retrieve detailed information about a specific hotel.
+// User Examples: "Tell me about Hilton Cairo"
+// ---------------------------------------------------------
+MATCH (h:Hotel {name:$hotel_name})-[:LOCATED_IN]->(c:City)
+RETURN h, c.name AS city
+
+
+// ---------------------------------------------------------
+// Query 3 — Intent: Reviews
+// Purpose: Retrieve all reviews for a specific hotel.
+// User Examples: "Give me reviews for Hilton", "What do travelers say?"
+// ---------------------------------------------------------
+MATCH (h:Hotel {name:$hotel_name})<-[:REVIEWED]-(r:Review)<-[:WROTE]-(t:Traveller)
+RETURN r.text, r.date, r.score_overall, t.type AS traveller_type
+ORDER BY r.date DESC
+LIMIT 20
+
+
+// ---------------------------------------------------------
+// Query 4 — Intent: Filter
+// Purpose: Filter hotels by minimum rating and minimum star category.
+// User Examples: "Hotels above 8 rating", "Find hotels with 5 stars"
+// ---------------------------------------------------------
+MATCH (h:Hotel)-[:LOCATED_IN]->(c:City)
+WHERE h.average_reviews_score >= $minRating AND h.star_rating >= $minStars
+RETURN h.name, h.average_reviews_score, h.star_rating, c.name AS city
+ORDER BY h.average_reviews_score DESC
+
+
+// ---------------------------------------------------------
+// Query 5 — Intent: Filter + Recommendation
+// Purpose: Recommend hotels preferred by a specific traveler type.
+// User Examples: "Best hotels for business travelers", "Family-friendly hotels"
+// ---------------------------------------------------------
+MATCH (t:Traveller {type:$traveller_type})-[:WROTE]->(r:Review)-[:REVIEWED]->(h:Hotel)
+RETURN h.name, avg(r.score_overall) AS rating
+ORDER BY rating DESC LIMIT 10
+
+
+// ---------------------------------------------------------
+// Query 6 — Intent: Filter
+// Purpose: Filter hotels by cleanliness, comfort, and facilities base scores.
+// User Examples: "Clean hotels", "Hotels with good facilities"
+// ---------------------------------------------------------
+MATCH (h:Hotel)
+WHERE h.cleanliness_base >= $min_cleanliness
+  AND h.comfort_base >= $min_comfort
+  AND h.facilities_base >= $min_facilities
+RETURN h.name, h.star_rating, h.cleanliness_base, h.comfort_base, h.facilities_base
+ORDER BY h.star_rating DESC
+
+
+// ---------------------------------------------------------
+// Query 7 — Intent: Ranking + Recommendation
+// Purpose: Get the top rated hotels overall based on review scores.
+// User Examples: "Top hotels", "What are the best-rated hotels?"
+// ---------------------------------------------------------
+MATCH (h:Hotel)<-[:REVIEWED]-(r:Review)
+RETURN h.name AS hotel, avg(r.score_overall) AS rating
+ORDER BY rating DESC LIMIT 5
+
+
+// ---------------------------------------------------------
+// Query 8 — Intent: Ranking + Personalized Recommendation
+// Purpose: Recommend top hotels for a specific age demographic.
+// User Examples: "Best hotels for people aged 18–25"
+// ---------------------------------------------------------
+MATCH (t:Traveller)-[:WROTE]->(r:Review)-[:REVIEWED]->(h:Hotel)
+WHERE t.age >= $age_min AND t.age <= $age_max
+RETURN h.name AS hotel, avg(r.score_overall) AS rating
+ORDER BY rating DESC LIMIT 5
+
+
+// ---------------------------------------------------------
+// Query 9 — Intent: Recommendation (Expectation-based analysis)
+// Purpose: Identify hotels that exceed expectations (Milestone 2 rule).
+// User Examples: "Which hotels exceed expectations?"
+// ---------------------------------------------------------
+MATCH (h:Hotel)<-[:REVIEWED]-(r:Review)<-[:WROTE]-(t:Traveller)
+WITH h,
+     (h.cleanliness_base + h.comfort_base + h.facilities_base) AS expected_score,
+     avg(r.score_cleanliness + r.score_comfort + r.score_facilities) AS actual_score
+WHERE actual_score >= expected_score
+RETURN h.name AS hotel, expected_score, actual_score,
+       (actual_score - expected_score) AS improvement
+ORDER BY improvement DESC
+
+
+// ---------------------------------------------------------
+// Query 10 — Intent: Multi-hop Reasoning + Recommendation
+// Purpose: Recommend hotels in visa-free countries for a given traveler.
+// User Examples: "Where can I travel without visa?", "Hotels I can book visa-free"
+// ---------------------------------------------------------
+MATCH (trav:Traveller {user_id:$user_id})-[:FROM_COUNTRY]->(c1:Country)
+MATCH (h:Hotel)-[:LOCATED_IN]->(city:City)-[:LOCATED_IN]->(c2:Country)
+OPTIONAL MATCH (c1)-[v:NEEDS_VISA]->(c2)
+WHERE v IS NULL
+WITH h, city, c2
+MATCH (h)<-[:REVIEWED]-(r:Review)
+RETURN h.name AS hotel, city.name AS city, c2.name AS country, avg(r.score_overall) AS rating
+ORDER BY rating DESC
