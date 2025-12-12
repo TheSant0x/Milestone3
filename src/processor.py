@@ -1,22 +1,23 @@
 import os
 import json
-from langchain_huggingface import HuggingFaceEndpoint
+from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from src.models import Intent, Entities
 
 # Initialize LLM
 # Using HuggingFaceEndpoint for direct inference
-repo_id = os.environ.get("HF_REPO_ID", "mistralai/Mistral-7B-Instruct-v0.3")
+repo_id = os.environ.get("HF_REPO_ID", "meta-llama/Meta-Llama-3-8B-Instruct")
 hf_token = os.environ.get("HF_TOKEN")
 
 try:
-    llm = HuggingFaceEndpoint(
+    endpoint = HuggingFaceEndpoint(
         repo_id=repo_id,
         max_new_tokens=512,
         temperature=0.1,
         huggingfacehub_api_token=hf_token,
     )
+    llm = ChatHuggingFace(llm=endpoint)
 except Exception as e:
     # Fallback or error handling if init fails (e.g. missing token)
     print(f"Failed to initialize HuggingFaceEndpoint: {e}")
@@ -38,12 +39,13 @@ class Preprocessor:
 Analyze the user's query and classify it into one of the following categories:
 - question: The user is asking for a specific fact (e.g., "Does Hotel X have a pool?", "Where is Paris?").
 - recommendation: The user is asking for suggestions (e.g., "Suggest a romantic hotel", "Where should I stay?").
-- search: The user is searching for a specific entity entry (e.g., "Show me the Hilton", "Find user 123").
+- search: The user is searching for a specific entity entry (e.g., "Show me the Hilton", "Find user 123", "List hotels").
 
 You must output a valid JSON object matching the following structure:
 {format_instructions}
 
 Category must be exactly one of: "question", "recommendation", "search".
+IMPORTANT: Output ONLY the JSON object. Do not output any explanation or preamble.
 """
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -57,17 +59,27 @@ Category must be exactly one of: "question", "recommendation", "search".
 
     def _build_entity_chain(self):
         system_prompt = """You are an expert Named Entity Recognizer (NER) for a Hotel Travel Assistant.
-Extract the following entities from the user's query:
+Extract the following entities from the user's query into a JSON object:
 
-- Locations: Cities or Countries (e.g., "Paris", "France").
-- Hotels: Specific hotel names (e.g., "Hilton").
-- Traveller Types: e.g., Solo, Family, Couple, Business.
-- Attributes: Detailed constraints (e.g. "Clean", "Comfortable", "Wifi", "Pool").
-- Dates: specific dates, months, or duration.
+- city: Target city name (e.g. "Paris").
+- country: Target country name (e.g. "France").
+- hotel_name: Specific hotel name (e.g. "Hilton").
+- traveller_type: ONE of ["Solo", "Couple", "Family", "Business"] if mentioned or implied.
+- min_rating: Minimum review score number (e.g. "rated above 8").
+- min_stars: Minimum star rating (e.g. "5 star hotel").
+- min_cleanliness: Minimum cleanliness score.
+- min_comfort: Minimum comfort score.
+- min_facilities: Minimum facilities score.
+- age_min / age_max: Age range for demographics (e.g. "for people aged 18-24" -> min=18, max=24).
+- target_country: Country to visit (for visa queries).
+- current_country: User's origin country (for visa queries).
+- attributes: general attributes like "pool", "wifi".
 
-Only extract what is explicitly mentioned or strongly implied.
+Only extract what is explicitly mentioned.
 You must output a valid JSON object matching the following structure:
 {format_instructions}
+
+IMPORTANT: Output ONLY the JSON object. Do not output any explanation or preamble.
 """
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
