@@ -1,12 +1,20 @@
 import os
 from langchain_huggingface import HuggingFaceEmbeddings
 from neo4j import GraphDatabase
+import logger as Logger
 
 class EmbeddingManager:
     def __init__(self):
         self.uri = os.environ.get("NEO4J_URI", "neo4j://localhost:7687")
         self.username = os.environ.get("NEO4J_USERNAME", "neo4j")
         self.password = os.environ.get("NEO4J_PASSWORD")
+        Logger.log("Initializing Embedding Manager...")
+        Logger.log("Creating Vector Index...")
+        self.create_vector_index()
+        Logger.log("Populating Embeddings (this may take a while)...")
+        self.populate_embeddings()
+        self.close()
+        Logger.log("Setup Complete.")
         
         if not self.password:
             raise ValueError("NEO4J_PASSWORD not found in environment.")

@@ -1,49 +1,39 @@
 import os
-import sys
-import argparse
+
 from dotenv import load_dotenv
+
 from src.processor import Preprocessor
 from src.retriever import GraphRetriever
 from src.embeddings import EmbeddingManager
+import src.logger as Logger
+import src.inference as Inference
 
-def setup_embeddings():
-    print("Initializing Embedding Manager...")
-    em = EmbeddingManager()
-    print("Creating Vector Index...")
-    em.create_vector_index()
-    print("Populating Embeddings (this may take a while)...")
-    em.populate_embeddings()
-    em.close()
-    print("Setup Complete.")
+load_dotenv()
 
-def main():
-    load_dotenv()
+def get_response(model_name, verbosity, query, add_embeddings):
+
+    Logger.verbosity = verbosity
     
-    # CLI Argument to run setup
-    parser = argparse.ArgumentParser(description="Graph RAG Travel Assistant")
-    parser.add_argument("--setup", action="store_true", help="Initialize Vector Embeddings in Neo4j")
-    args = parser.parse_args()
-    
-    if args.setup:
-        setup_embeddings()
+    if add_embeddings:
+        EmbeddingManager() # only needs to be instantiated
         return
 
     # Check keys
     if not os.environ.get("HF_TOKEN"):
-        print("[!] Error: HF_TOKEN is missing in .env")
+        Logger.log("[!] Error: HF_TOKEN is missing in .env", Logger.ERROR)
         return
     if not os.environ.get("NEO4J_PASSWORD"):
-        print("[!] Error: NEO4J_PASSWORD is missing in .env")
+        Logger.log("[!] Error: NEO4J_PASSWORD is missing in .env", Logger.ERROR)
         return
 
     try:
-        print("Initializing Components...")
+        Logger.log("Initializing Components...")
         processor = Preprocessor()
         retriever = GraphRetriever()
         embedder = EmbeddingManager()
         
-        print("\n=== Graph-RAG Travel Assistant (M3) ===")
-        print("Type 'exit' to quit.\n")
+        Logger.log("\n=== Graph-RAG Travel Assistant (M3) ===")
+        Logger.log("Type 'exit' to quit.\n")
         
         while True:
             user_input = input("\nUser: ")
@@ -53,13 +43,13 @@ def main():
             if not user_input.strip():
                 continue
 
-            print("...> Analyzing Request...")
+            Logger.log("...> Analyzing Request...")
             intent, entities = processor.process(user_input)
             
-            print(f"    [Intent]: {intent.category}")
-            print(f"    [Entities]: {', '.join([f'{k}={v}' for k,v in entities.dict().items() if v])}")
+            Logger.log(f"    [Intent]: {intent.category}")
+            Logger.log(f"    [Entities]: {', '.join([f'{k}={v}' for k,v in entities.dict().items() if v])}")
             
-            print("...> Retrieving from Knowledge Graph...")
+            Logger.log("...> Retrieving from Knowledge Graph...")
             
             # 1. Baseline Retrieval
             baseline_results = retriever.retrieve_baseline(intent, entities)
@@ -70,21 +60,26 @@ def main():
                 embedding_results = embedder.search_similar_hotels(user_input)
 
             # Display Results
-            print("\n--- Baseline Results (Cypher) ---")
-            print(retriever.format_results(baseline_results))
+            Logger.log("\n--- Baseline Results (Cypher) ---")
+            Logger.log(retriever.format_results(baseline_results))
 
-            print("\n--- Semantic Search Results (Embeddings) ---")
-            print(embedder.format_results(embedding_results))
+            Logger.log("\n--- Semantic Search Results (Embeddings) ---")
+            Logger.log(embedder.format_results(embedding_results))
             
-            print("\n" + "="*50)
+            Logger.log("\n" + "="*50)
 
         retriever.close()
         embedder.close()
+        
+        context = baseline_results + embedding_results if add_embeddings else baseline_results
+        
+        formatted_query = Inference.format_prompt(query, context)
+        client = Inference.setup_inference()
+        
+        response = Inference.call_model(client, model_name, formatted_query)
+        return response
 
     except Exception as e:
-        print(f"Application Error: {e}")
+        Logger.log(f"Application Error: {e}", Logger.ERROR)
         import traceback
         traceback.print_exc()
-
-if __name__ == "__main__":
-    main()
