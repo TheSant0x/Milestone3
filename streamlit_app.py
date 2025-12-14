@@ -154,14 +154,11 @@ class StreamlitTravelAssistant:
             else:
                 context = baseline_results
             
-            if context:
-                formatted_query = Inference.format_prompt(query, context)
-                client = Inference.setup_inference()
-                response = Inference.call_model(client, model_name, formatted_query)
-                results["final_answer"] = response
-            else:
-                results["final_answer"] = "No relevant information found in the knowledge graph."
-            
+            formatted_query = Inference.format_prompt(query, context)
+            client = Inference.setup_inference()
+            response = Inference.call_model(client, model_name, formatted_query)
+            results["final_answer"] = response
+
         except Exception as e:
             results["error"] = str(e)
             results["final_answer"] = f"Error processing query: {str(e)}"
@@ -271,12 +268,7 @@ def main():
     
     # Model Selection
     st.sidebar.subheader("Model Selection")
-    model_options = [
-        "microsoft/DialoGPT-medium",
-        "microsoft/DialoGPT-small", 
-        "gpt2",
-        "distilgpt2"
-    ]
+    model_options = Inference.models
     selected_model = st.sidebar.selectbox(
         "Choose LLM Model:", 
         model_options,
@@ -336,7 +328,7 @@ def main():
         process_button = st.button("Process Query", type="primary", use_container_width=True)
     
     # Process the query
-    if process_button and query:
+    if process_button and query.strip():
         st.markdown("---")
         
         with st.spinner("Processing your query..."):
