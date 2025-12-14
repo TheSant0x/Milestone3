@@ -11,14 +11,19 @@ models = [
 model = models[0]
 
 def format_prompt(query, context):
-    return f"""
-        You are a helpful hotel recommender assistant.
-        
-        The user's query is: "{query}"
-        
-        Use this extra context when relevant:
+    template = f"""
+    You are a helpful hotel recommender assistant. 
+    Answer the query directly without asking further questions. Answers only!
+    
+    The user's query is: "{query}"
+    """
+    
+    if context:
+        template += f"""Use this extra context when relevant:
         {context}
         """
+    return template
+        
 
 def setup_inference():
     return InferenceClient(
