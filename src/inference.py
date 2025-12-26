@@ -43,7 +43,7 @@ def format_prompt(query, context):
 
 def setup_inference():
     return InferenceClient(
-        api_key=os.environ["HUGGINGFACEHUB_API_TOKEN"],
+        api_key=os.environ["HF_TOKEN"],
         provider="auto",   # Automatically selects best provider
     )
 
